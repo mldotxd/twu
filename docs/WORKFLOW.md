@@ -184,7 +184,8 @@ tc/{Module}/{Scenario}.md（测试用例）
 
 ```
 {项目根目录}/
-├── CLAUDE.md                     # 业务背景（必填，AI 执行时读取）
+├── CLAUDE.md                     # 业务背景（必填，AI 执行时自动读取）
+│                                 # 建议包含：产品简介、核心术语、测试规范、禁止行为
 ├── .claude/skills/               # Skills（所有需求共享）
 │   ├── req-parse/SKILL.md
 │   ├── req-review/SKILL.md

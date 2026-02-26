@@ -29,9 +29,6 @@ twu init feature-login/
 # 放入原始文档
 cp prd.pdf feature-login/raw/
 
-# 解析文档（准备 chunks）
-twu parse feature-login/
-
 # 在 Claude Code 中执行各阶段
 /req-parse    # 生成标准化需求
 /req-review   # 审核需求问题

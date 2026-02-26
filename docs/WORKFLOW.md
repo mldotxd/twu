@@ -46,7 +46,7 @@ tc/{Module}/{Scenario}.md（测试用例）
 
 | 步骤 | 执行者 | 动作 |
 |------|--------|------|
-| 1 | 用户 | 运行 `twu parse <需求目录>`，Docling 解析文档到 `req/chunks/` |
+| 1 | AI | 调用 `twu parse <需求目录>`，Docling 解析文档到 `req/chunks/` 和 `req/assets/` |
 | 2 | AI | 阅读 chunks，多模态理解图片（原型图/流程图/表格） |
 | 3 | AI | 生成 `req/index.md`，不确定处标记 `[待确认]` |
 | 4 | AI | `git commit "req-parse: 解析需求文档"` |

@@ -69,7 +69,6 @@ TWU - 测试工作流工具
 在项目根目录编写 `CLAUDE.md`，AI 执行时自动读取。
 
 ```bash
-cp CLAUDE.md.example CLAUDE.md
 vi CLAUDE.md
 ```
 
@@ -194,12 +193,22 @@ uv run twu validate plan 用户登录/tc/plan.md
 [格式检验]
 ✓ 通过
 
-[重复检测]
-✓ 无重复
+[分布统计]
+Module: 3 个
+Scenario: 12 个
+风险等级: Critical=3 High=5 Medium=3 Low=1
 
 [乱码检测]
 ✓ 无乱码
+
+[下一步]
+检验通过，请进行 Agent 自检：
+- Scenario 是独立操作路径，不是数据差异？
+- 测试关注点具体（有数值、有条件）？
+- 分布是否合理？
 ```
+
+> Scenario 重复会在 `[格式检验]` 中以错误形式报出：`行 N: Scenario 重复「XXX」`
 
 ---
 
@@ -379,11 +388,13 @@ AI 会自动：
 3. 自检过滤（删除常识问题、装饰性细节、纯技术实现）
 4. 生成 `req/issues.md`（含问题描述、需要澄清、影响范围、参考），git commit
 
-**产品填写答案**：在 `req/issues.md` 每个 `[产品回答]` 处填写，完成后告知 AI 合并。
+**产品填写答案**：在 `req/issues.md` 每个 `[产品回答]` 处填写，完成后在对话中告知 AI：
 
 ```
-完成后运行：/req-review（AI 会自动将答案合并到 req/index.md）
+请合并 issues.md 中的答案到 req/index.md
 ```
+
+AI 会将答案合并到对应段落并 git commit，无需重新运行 `/req-review`。
 
 ---
 

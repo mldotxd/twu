@@ -3,10 +3,12 @@
 工作流评估工具
 
 用法：
-    uv run python eval_workflow.py <input> [--type history|git|dir]
+    uv run python eval_workflow.py <input> [--type history|jsonl|git|dir]
+    uv run python eval_workflow.py --latest  # 自动检测最新会话
 
 示例：
     uv run python eval_workflow.py docs/eval/01.txt --type history
+    uv run python eval_workflow.py ~/.claude/projects/-Users-Apple-mf-test-twu/613aaaf5.jsonl --type jsonl
     uv run python eval_workflow.py e6a36e5..25f79de --type git
     uv run python eval_workflow.py 相框端-轮播展示/ --type dir
 """
@@ -15,8 +17,9 @@ import re
 import json
 from pathlib import Path
 from datetime import datetime
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import subprocess
+import os
 
 
 class WorkflowEvaluator:
@@ -36,6 +39,7 @@ class WorkflowEvaluator:
             "commits": [],
             "errors": [],
             "timings": {},
+            "messages": [],
         }
 
     def evaluate(self) -> Dict[str, Any]:
@@ -44,6 +48,8 @@ class WorkflowEvaluator:
 
         if self.input_type == "history":
             self._evaluate_history()
+        elif self.input_type == "jsonl":
+            self._evaluate_jsonl()
         elif self.input_type == "git":
             self._evaluate_git()
         elif self.input_type == "dir":
@@ -60,6 +66,80 @@ class WorkflowEvaluator:
 
         print(f"评估完成：{report_path}")
         return self.data
+
+    def _evaluate_jsonl(self):
+        """评估 JSONL 格式的历史文件"""
+        jsonl_file = Path(self.input_source).expanduser()
+        if not jsonl_file.exists():
+            raise FileNotFoundError(f"JSONL 文件不存在: {self.input_source}")
+
+        print(f"读取 JSONL 文件：{jsonl_file}")
+
+        # 读取所有消息
+        messages = []
+        with open(jsonl_file, "r", encoding="utf-8") as f:
+            for line in f:
+                try:
+                    msg = json.loads(line)
+                    messages.append(msg)
+                except json.JSONDecodeError:
+                    continue
+
+        print(f"共读取 {len(messages)} 条记录")
+
+        # 提取用户消息和助手消息
+        user_messages = []
+        assistant_messages = []
+        tool_uses = []
+
+        for msg in messages:
+            if msg.get("type") == "user":
+                message_data = msg.get("message", {})
+                if message_data.get("role") == "user":
+                    content = message_data.get("content", [])
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "text":
+                            user_messages.append(item.get("text", ""))
+
+            elif msg.get("type") == "assistant":
+                message_data = msg.get("message", {})
+                if message_data.get("role") == "assistant":
+                    content = message_data.get("content", [])
+                    for item in content:
+                        if isinstance(item, dict) and item.get("type") == "tool_use":
+                            tool_name = item.get("name", "")
+                            tool_uses.append(tool_name)
+                            self.data["tools"].append(tool_name)
+
+        # 从用户消息中提取 Skill 调用
+        for text in user_messages:
+            skill_match = re.search(r"/(\w+[-\w]*)", text)
+            if skill_match:
+                skill = skill_match.group(1)
+                self.data["skills"].append(skill)
+
+        # 统计工具调用
+        print(f"提取到 {len(self.data['skills'])} 个 Skill 调用")
+        print(f"提取到 {len(self.data['tools'])} 个工具调用")
+
+        # 尝试从当前目录获取 Git 信息
+        try:
+            result = subprocess.run(
+                ["git", "log", "--oneline", "-10"],
+                capture_output=True,
+                text=True,
+                cwd=Path.cwd(),
+            )
+            for line in result.stdout.strip().split("\n"):
+                if line:
+                    parts = line.split(" ", 1)
+                    if len(parts) == 2:
+                        self.data["commits"].append({
+                            "hash": parts[0],
+                            "message": parts[1],
+                        })
+        except Exception as e:
+            print(f"获取 Git 信息失败: {e}")
 
     def _evaluate_history(self):
         """评估执行历史"""
@@ -260,19 +340,65 @@ class WorkflowEvaluator:
         return report
 
 
+def find_latest_session() -> Optional[str]:
+    """查找最新的会话文件"""
+    home = Path.home()
+    cwd = Path.cwd()
+
+    # 构建项目路径
+    project_path = str(cwd).replace("/", "-")
+    if project_path.startswith("-"):
+        project_path = project_path[1:]
+
+    claude_project_dir = home / ".claude" / "projects" / f"-{project_path}"
+
+    if not claude_project_dir.exists():
+        print(f"未找到项目目录: {claude_project_dir}")
+        return None
+
+    # 查找所有 JSONL 文件
+    jsonl_files = list(claude_project_dir.glob("*.jsonl"))
+
+    if not jsonl_files:
+        print(f"未找到 JSONL 文件: {claude_project_dir}")
+        return None
+
+    # 按修改时间排序，返回最新的
+    latest = max(jsonl_files, key=lambda p: p.stat().st_mtime)
+    print(f"找到最新会话: {latest}")
+    return str(latest)
+
+
 def main():
     import argparse
 
     parser = argparse.ArgumentParser(description="工作流评估工具")
-    parser.add_argument("input", help="输入来源（文件路径/Git 范围/目录）")
+    parser.add_argument("input", nargs="?", help="输入来源（文件路径/Git 范围/目录）")
     parser.add_argument(
         "--type",
-        choices=["history", "git", "dir"],
+        choices=["history", "jsonl", "git", "dir"],
         default="history",
         help="输入类型",
     )
+    parser.add_argument(
+        "--latest",
+        action="store_true",
+        help="自动检测最新的会话文件",
+    )
 
     args = parser.parse_args()
+
+    if args.latest:
+        latest_session = find_latest_session()
+        if not latest_session:
+            print("未找到最新会话")
+            return
+        args.input = latest_session
+        args.type = "jsonl"
+
+    if not args.input:
+        parser.print_help()
+        return
 
     evaluator = WorkflowEvaluator(args.input, args.type)
     evaluator.evaluate()
